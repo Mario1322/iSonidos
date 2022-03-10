@@ -1,7 +1,10 @@
 package com.example.isonidos;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.app.ShareCompat;
+import androidx.core.content.FileProvider;
 
+import android.content.Intent;
 import android.graphics.Color;
 import android.media.MediaPlayer;
 import android.net.Uri;
@@ -12,6 +15,11 @@ import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.VideoView;
 
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.lang.reflect.Field;
 import java.util.HashMap;
 
@@ -39,14 +47,29 @@ public class MainActivity extends AppCompatActivity {
         LinearLayout principal = findViewById(R.id.botones);
         principal.addView(auxiliar);
         Field[] listaCanciones = R.raw.class.getFields();
-        int columnas = 5;
+        int columnas = 3;
         for (int i=0; i<listaCanciones.length; i++){
             //creamos un botón por código y lo añadimos a la vista de botones
             Button b = creaBoton(i, listaCanciones);
-
+            auxiliar.addView(b);
+            if(i % columnas == columnas-1){
+                auxiliar = creaLineaBotones(i);
+                principal.addView(auxiliar);
+            }
+    listaSonidos.put(b.getTag().toString(), b.getText().toString());
+            b.setText(acortaEtiqueta(b.getText().toString()));
         }
     }
-
+private String acortaEtiqueta (String s){
+        if(s.substring(0,2).contains("v_")){
+            s=s.substring(s.indexOf("_") + 1);
+    }
+        if(s.contains("_")) {
+            s = s.substring(s.indexOf('_'));
+        }
+        s=s.replace('_',' ');
+        return s;
+}
     public void reproduceSonido(View vista){
         MediaPlayer m = new MediaPlayer();
         int idSonido = this.getResources().getIdentifier(vista.getTag().toString(),
@@ -94,9 +117,20 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+        b.setOnLongClickListener(new View.OnLongClickListener() {
+            @Override
+            public boolean onLongClick(View v) {
+                try {
+                    sonidoCopiar(v);
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+                return true;
+            }
+        });
         return b;
-    }
 
+    }
 
     public void sonido(View view){
         Button b = (Button) findViewById(view.getId());
@@ -121,7 +155,62 @@ public class MainActivity extends AppCompatActivity {
             });
         }
     }
+    private static final String SHARED_PROVIDER_AUTHORITY = BuildConfig.APPLICATION_ID + ".myfileprovider";
+    private static final String SHARED_FOLDER = "shared";
 
+    public void sonidoCopiar(View view) throws IOException {
+    Button b = (Button) findViewById(view.getId());
+    String nombre = listaSonidos.get(view.getTag().toString());
+    String extension = ".mp3";
+    String tipo = "audio/mpeg";
+    if (nombre.substring(0,2).contains("v_")) {
+        extension = ".mp4";
+        tipo = "video/mp4";
+    }
+    InputStream ins = getResources().openRawResource(
+            getResources().getIdentifier(nombre,
+                    "raw", getPackageName()));
 
+    final File sharedFolder = new File(getFilesDir(), SHARED_FOLDER);
+    sharedFolder.mkdirs();
 
+    final File sharedFile = File.createTempFile(nombre,extension , sharedFolder);
+    sharedFile.createNewFile();
+
+    copyInputStreamToFile (ins, sharedFile);
+    final Uri uri = FileProvider.getUriForFile(this, SHARED_PROVIDER_AUTHORITY, sharedFile);
+    final ShareCompat.IntentBuilder intentBuilder = ShareCompat.IntentBuilder.from(this)
+            .setType(tipo)
+            .addStream(uri);
+    final Intent chooserIntent = intentBuilder.createChooserIntent();
+    startActivity(chooserIntent);
 }
+    // Copy an InputStream to a File.
+    private void copyInputStreamToFile(InputStream in, File file) {
+        OutputStream out = null;
+        try {
+            out = new FileOutputStream(file);
+            byte[] buf = new byte[1024];
+            int len;
+            while((len=in.read(buf))>0){
+                out.write(buf,0,len);
+            }
+        }
+        catch (Exception e) {
+            e.printStackTrace();
+        }
+        finally {
+            // Ensure that the InputStreams are closed even if there's an exception.
+            try {
+                if ( out != null ) {
+                    out.close();
+                }
+                in.close();
+            }
+            catch ( IOException e ) {
+                e.printStackTrace();
+            }
+        }
+    }
+}
+
